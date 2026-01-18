@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"errors"
 	"math/rand"
 	"time"
 
@@ -57,9 +57,11 @@ func main() {
 	stdscr.Keypad(true)
 
 	my, mx := stdscr.MaxYX()
-	log.Printf("my :%d\nmx: %d", my, mx)
+	h, wth := 35, 50
+	startY := (my - h) / 2
+	startX := (mx - wth) / 2
 
-	win, _ := NewWindow(w.windowSize.y*7/10, w.windowSize.x, 0, 0)
+	win, _ := NewWindow(w.windowSize.y*7/10, w.windowSize.x, startY, startX)
 	win.Keypad(true)
 	w.win = win
 
@@ -74,7 +76,7 @@ func main() {
 		}
 	}()
 
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -89,14 +91,16 @@ func main() {
 				s.direction = pos{-1, 0}
 			case KEY_RIGHT:
 				s.direction = pos{1, 0}
-			case KEY_BACKSPACE:
-				time.Sleep(time.second * 100)
 			case 'q':
 				return
 			}
 
 		case <-ticker.C:
-			updateSnake(s, w, f, rng)
+			err := updateSnake(s, w, f, rng)
+			if err != nil {
+				stdscr.MovePrint(my-2, 0, "Game Over")
+				return
+			}
 			printGrid(s, w, f)
 
 			stdscr.MovePrintf(
@@ -113,42 +117,51 @@ func main() {
 	}
 }
 
-func updateSnake(s *snake, w *window, f *food, rng *rand.Rand) {
+func updateSnake(s *snake, w *window, f *food, rng *rand.Rand) error {
 	// eat food
+
 	if s.headPos == f.foodPos {
 		s.isGrowLength = true
 		f.foodPos = randomFoodPos(w.windowSize, s.snakePos, rng)
 	}
 
-	head := s.body[len(s.body)-1]
-	newHead := pos{head.x + s.direction.x, head.y + s.direction.y}
+	for i := 0; i < 2; i++ {
 
-	// wrap around boundaries
-	if newHead.x < 0 {
-		newHead.x = w.windowSize.x - 1
-	}
-	if newHead.x >= w.windowSize.x {
-		newHead.x = 0
-	}
-	if newHead.y < 0 {
-		newHead.y = w.windowSize.y - 1
-	}
-	if newHead.y >= w.windowSize.y {
-		newHead.y = 0
-	}
+		head := s.body[len(s.body)-1]
+		newHead := pos{head.x + s.direction.x, head.y + s.direction.y}
 
-	// add new head
-	s.body = append(s.body, newHead)
-	s.snakePos[newHead] = struct{}{}
-	s.headPos = newHead
+		// wrap around boundaries
+		if newHead.x < 0 {
+			newHead.x = w.windowSize.x - 1
+		}
+		if newHead.x >= w.windowSize.x {
+			newHead.x = 0
+		}
+		if newHead.y < 0 {
+			newHead.y = w.windowSize.y - 1
+		}
+		if newHead.y >= w.windowSize.y {
+			newHead.y = 0
+		}
 
-	if !s.isGrowLength {
-		tail := s.body[0]
-		s.body = s.body[1:]
-		delete(s.snakePos, tail)
-	} else {
-		s.isGrowLength = false
+		if _, exists := s.snakePos[newHead]; exists {
+			return errors.New("game Over")
+		}
+
+		// add new head
+		s.body = append(s.body, newHead)
+		s.snakePos[newHead] = struct{}{}
+		s.headPos = newHead
+
+		if !s.isGrowLength {
+			tail := s.body[0]
+			s.body = s.body[1:]
+			delete(s.snakePos, tail)
+		} else {
+			s.isGrowLength = false
+		}
 	}
+	return nil
 }
 
 func printGrid(s *snake, w *window, f *food) {
@@ -168,7 +181,7 @@ func printGrid(s *snake, w *window, f *food) {
 					w.win.MovePrint(j, i, "m")
 				}
 			} else {
-				w.win.MovePrint(j, i, " ")
+				w.win.MovePrint(j, i, ".")
 			}
 		}
 	}
